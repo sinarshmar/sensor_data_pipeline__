@@ -1,0 +1,200 @@
+services:
+  # ===========================================================================
+  # PostgreSQL Database (Supabase image)
+  # ===========================================================================
+  postgres:
+    image: supabase/postgres:15.1.0.117
+    container_name: sensor_data_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sensor_data}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/01_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sensor_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Flask API
+  # ===========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: sensor_data_api
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sensor_data}
+      API_HOST: 0.0.0.0
+      API_PORT: 5001
+      API_DEBUG: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===========================================================================
+  # Airflow Scheduler
+  # ===========================================================================
+  airflow-scheduler:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: sensor_data_airflow_scheduler
+    restart: unless-stopped
+    command: scheduler
+    environment:
+      # Airflow Core
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      
+      # Airflow Database (uses same PostgreSQL)
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sensor_data}
+      
+      # SMTP for email alerts
+      #AIRFLOW__SMTP__SMTP_HOST: smtp.gmail.com
+      #AIRFLOW__SMTP__SMTP_PORT: 587
+      #AIRFLOW__SMTP__SMTP_STARTTLS: "true"
+      #AIRFLOW__SMTP__SMTP_SSL: "false"
+      #AIRFLOW__SMTP__SMTP_USER: ${SMTP_USER:-kumar.gaharwar@gmail.com}
+      #AIRFLOW__SMTP__SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      #AIRFLOW__SMTP__SMTP_MAIL_FROM: ${SMTP_USER:-kumar.gaharwar@gmail.com}
+      
+      # Database connection for dbt/hooks
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sensor_data}
+      
+      # Python path for modular imports
+      PYTHONPATH: /opt/airflow
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/config:/opt/airflow/config
+      - ./airflow/hooks:/opt/airflow/hooks
+      - ./airflow/operators:/opt/airflow/operators
+      - ./dbt:/opt/airflow/dbt
+      - airflow_logs:/opt/airflow/logs
+      - airflow_packages:/home/airflow/.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ===========================================================================
+  # Airflow Webserver (UI)
+  # ===========================================================================
+  airflow-webserver:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: sensor_data_airflow_webserver
+    restart: unless-stopped
+    command: webserver
+    ports:
+      - "8080:8080"
+    environment:
+      # Airflow Core
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      
+      # Airflow Database
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sensor_data}
+      
+      # Webserver
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      AIRFLOW__WEBSERVER__RBAC: "true"
+      
+      # Database connection for dbt/hooks
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sensor_data}
+      
+      # Python path for modular imports
+      PYTHONPATH: /opt/airflow
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/config:/opt/airflow/config
+      - ./airflow/hooks:/opt/airflow/hooks
+      - ./airflow/operators:/opt/airflow/operators
+      - ./dbt:/opt/airflow/dbt
+      - airflow_logs:/opt/airflow/logs
+      - airflow_packages:/home/airflow/.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ===========================================================================
+  # Airflow Init (one-time setup: DB, user, packages)
+  # ===========================================================================
+  airflow-init:
+    image: apache/airflow:2.8.1-python3.11
+    container_name: sensor_data_airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        echo "Installing Python packages..."
+        pip install --user dbt-postgres==1.10.0 psycopg2-binary==2.9.11
+        
+        echo "Installing dbt packages..."
+        cd /opt/airflow/dbt && dbt deps --profiles-dir .
+        
+        echo "Initializing Airflow database..."
+        airflow db init
+        
+        echo "Creating admin user..."
+        airflow users create \
+          --username admin \
+          --password admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@localhost
+        
+        echo "Airflow initialization complete!"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sensor_data}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sensor_data}
+    volumes:
+      - ./dbt:/opt/airflow/dbt
+      - airflow_packages:/home/airflow/.local
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  airflow_logs:
+  airflow_packages:

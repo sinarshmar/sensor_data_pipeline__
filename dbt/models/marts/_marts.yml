@@ -1,0 +1,48 @@
+version: 2
+
+models:
+  - name: mart_daily_power
+    description: |
+      Daily Power calculation: AVG(Voltage) × AVG(Current) per day.
+      
+      Source: silver.stg_readings
+      Target: gold.daily_power
+      Strategy: Incremental with merge (upserts on reading_date)
+      
+      Business Rule: Power is only calculated for days that have
+      BOTH Voltage AND Current readings.
+    
+    columns:
+      - name: reading_time
+        description: "Midnight UTC of the calculation day"
+        tests:
+          - not_null
+
+      - name: metric_name
+        description: "Always 'Power' for this model"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Power']
+
+      - name: metric_value
+        description: "Calculated Power = AVG(Voltage) × AVG(Current)"
+        tests:
+          - not_null
+          - dbt_utils.expression_is_true:
+              arguments:
+                expression: ">= 0"
+              config:
+                severity: warn
+
+      - name: reading_date
+        description: "Date of calculation (unique key - one Power per day)"
+        tests:
+          - unique
+          - not_null
+
+      - name: calculated_at
+        description: "Timestamp when dbt calculated this Power value"
+        tests:
+          - not_null

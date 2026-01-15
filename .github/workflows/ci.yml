@@ -1,0 +1,105 @@
+# =============================================================================
+# CI Pipeline - Runs on every push and pull request
+# =============================================================================
+# Validates code quality, types, tests, dbt models, and Terraform.
+# All checks must pass for the build to be green.
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint, Type Check, Test
+    runs-on: ubuntu-latest
+
+    steps:
+      # -----------------------------------------------------------------
+      # Setup
+      # -----------------------------------------------------------------
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.7.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      # -----------------------------------------------------------------
+      # Code Quality Checks
+      # -----------------------------------------------------------------
+      - name: Lint (ruff)
+        run: poetry run ruff check .
+
+      - name: Type check (pyright)
+        run: poetry run pyright
+
+      # -----------------------------------------------------------------
+      # Tests
+      # -----------------------------------------------------------------
+      - name: Run unit tests (pytest)
+        run: poetry run pytest -v
+
+      # -----------------------------------------------------------------
+      # dbt Validation
+      # -----------------------------------------------------------------
+      - name: Validate dbt models
+        run: |
+          cd dbt
+          poetry run dbt deps --profiles-dir .
+          poetry run dbt compile --profiles-dir .
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sensor_data
+
+  # =====================================================================
+  # Terraform Validation (separate job - no Python needed)
+  # =====================================================================
+  terraform:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: terraform
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+        working-directory: terraform
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: terraform

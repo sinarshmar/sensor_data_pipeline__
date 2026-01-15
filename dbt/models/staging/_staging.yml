@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: stg_readings
+    description: |
+      Parsed and validated sensor readings.
+      Transforms raw plaintext data from bronze layer into typed columns.
+      
+      Source: bronze.raw_readings
+      Target: silver.stg_readings
+      Strategy: Incremental (watermark on ingested_at)
+    
+    columns:
+      - name: raw_id
+        description: "Source ID from bronze.raw_readings (used for deduplication)"
+        tests:
+          - unique
+          - not_null
+
+      - name: reading_time
+        description: "Timestamp converted from unix epoch to UTC"
+        tests:
+          - not_null
+
+      - name: metric_name
+        description: "Metric type: Voltage or Current"
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Voltage', 'Current']
+
+      - name: metric_value
+        description: "Numeric reading value"
+        tests:
+          - not_null
+
+      - name: reading_date
+        description: "Date extracted from reading_time for indexing/filtering"
+        tests:
+          - not_null
+
+      - name: processed_at
+        description: "Timestamp when dbt processed this record"
+        tests:
+          - not_null

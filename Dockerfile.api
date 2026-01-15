@@ -1,0 +1,68 @@
+# =============================================================================
+# Sensor Data Flask API Dockerfile
+# =============================================================================
+# Multi-stage build for smaller image size.
+# Runs as non-root user for security.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Builder (install dependencies)
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Poetry
+RUN pip install --no-cache-dir poetry==1.7.1
+
+# Copy dependency files
+COPY pyproject.toml poetry.lock ./
+
+# Export dependencies to requirements.txt (without dev dependencies)
+RUN poetry export -f requirements.txt --without-hashes --without dev > requirements.txt
+
+# Install dependencies to a virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+# -----------------------------------------------------------------------------
+# Stage 2: Runtime (minimal image)
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim as runtime
+
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash appuser
+USER appuser
+
+# Copy application code
+COPY --chown=appuser:appuser src/ ./src/
+
+# Expose port
+EXPOSE 5001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+    CMD curl -f http://localhost:5001/health || exit 1
+
+# Run the application
+CMD ["python", "-m", "src.api.app"]
