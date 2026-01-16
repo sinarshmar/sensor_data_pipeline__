@@ -29,6 +29,7 @@ strictListInference = true
 strictDictionaryInference = true
 reportMissingTypeStubs = true
 pythonVersion = "3.11"
+include = ["src", "tests"]
 exclude = ["airflow", ".venv", "dbt/dbt_packages"]
 
 [[tool.pyright.executionEnvironments]]
