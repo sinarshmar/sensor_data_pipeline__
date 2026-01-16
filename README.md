@@ -74,13 +74,13 @@ Sufficient for current scale. SQL-based transformations are easier to maintain a
 Both dbt models use `materialized='incremental'` with watermarks. Avoids full table scans. Addresses common feedback about "full reload instead of incremental."
 
 ### Why Modular Airflow?
-Separates DAGs, operators, hooks, and config. New pipelines can reuse `DbtRunOperator` and `DbtTestOperator` without copy-paste.
+Separates DAGs, operators, hooks, and config. New pipelines can reuse `DbtRunOperator` and `DbtTestOperator` without copy-paste. Pipeline runs hourly — balances data freshness vs compute cost.
 
 ### Why No Custom Dockerfile for Airflow?
 Airflow is local-only; production uses Cloud Composer. Using official image + init-time package install is simpler than maintaining a custom Dockerfile.
 
 ### Why Terraform Not Deployed?
-Included to demonstrate IaC practices, not deployed. Cloud Composer costs ~$300/month. Code is validated and ready to deploy.
+Included to demonstrate IaC practices (targeting GCP: Cloud SQL, Cloud Run, Secret Manager), not deployed. Cloud Composer costs ~$300/month. Code is validated and ready to deploy.
 
 ### Why Separate Database Connections (src/ vs airflow/)?
 Airflow runs in separate container with no access to `src/`. Health check is one-off (no pooling needed). Both read from same env vars — no duplication.
