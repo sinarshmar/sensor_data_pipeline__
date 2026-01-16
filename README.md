@@ -51,7 +51,7 @@ curl "http://localhost:5001/data?from=2022-04-14&to=2022-04-15"
 ## Architecture
 
 ```
-POST /data → Bronze (raw) → dbt → Silver (typed) → Gold (Power) → GET /data
+POST /data → Bronze (raw) → Airflow → dbt → Silver (typed) → Gold (Power) → GET /data
 ```
 
 | Layer | Table | Purpose |
