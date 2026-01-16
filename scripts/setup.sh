@@ -195,6 +195,21 @@ fi
 
 print_header "STEP 5: STARTING DOCKER SERVICES"
 
+echo ""
+echo -e "${YELLOW}┌─────────────────────────────────────────────────────────────────────────────┐${NC}"
+echo -e "${YELLOW}│${NC}  ${RED}CAUTION${NC}                                                                    ${YELLOW}│${NC}"
+echo -e "${YELLOW}│${NC}                                                                             ${YELLOW}│${NC}"
+echo -e "${YELLOW}│${NC}  This will remove this project's Docker volumes and reset the database.     ${YELLOW}│${NC}"
+echo -e "${YELLOW}│${NC}  Any existing data will be permanently deleted.                             ${YELLOW}│${NC}"
+echo -e "${YELLOW}└─────────────────────────────────────────────────────────────────────────────┘${NC}"
+echo ""
+echo -n "Do you want to proceed? (y/N): "
+read -r PROCEED
+if [ "$PROCEED" != "y" ] && [ "$PROCEED" != "Y" ]; then
+    echo "Aborting."
+    exit 0
+fi
+
 print_step "5.1" "Stopping any existing containers..."
 docker compose down -v 2>/dev/null || true
 success "Cleaned up existing containers"

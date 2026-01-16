@@ -73,6 +73,22 @@ fi
 
 print_header "STEP 1: CLEAN START"
 
+echo ""
+echo -e "${YELLOW}┌─────────────────────────────────────────────────────────────────────────────┐${NC}"
+echo -e "${YELLOW}│${NC}  ${RED}CAUTION${NC}                                                                    ${YELLOW}│${NC}"
+echo -e "${YELLOW}│${NC}                                                                             ${YELLOW}│${NC}"
+echo -e "${YELLOW}│${NC}  This script is intended for assessment purposes only.                      ${YELLOW}│${NC}"
+echo -e "${YELLOW}│${NC}  It will remove this project's Docker volumes and reset the database.        ${YELLOW}│${NC}"
+echo -e "${YELLOW}│${NC}  Any existing data will be permanently deleted.                             ${YELLOW}│${NC}"
+echo -e "${YELLOW}└─────────────────────────────────────────────────────────────────────────────┘${NC}"
+echo ""
+echo -n "Do you want to proceed? (y/N): "
+read -r PROCEED
+if [ "$PROCEED" != "y" ] && [ "$PROCEED" != "Y" ]; then
+    echo "Aborting."
+    exit 0
+fi
+
 print_step "1.1" "Stopping existing containers..."
 docker compose down -v 2>/dev/null || true
 pass
