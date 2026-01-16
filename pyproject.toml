@@ -31,8 +31,10 @@ reportMissingTypeStubs = true
 pythonVersion = "3.11"
 include = ["src", "tests"]
 exclude = ["airflow", ".venv", "dbt/dbt_packages"]
+extraPaths = ["."]
 
 [[tool.pyright.executionEnvironments]]
 root = "tests"
+extraPaths = ["."]
 reportUnknownMemberType = false
 reportMissingTypeStubs = false
