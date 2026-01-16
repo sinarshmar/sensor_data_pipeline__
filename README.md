@@ -2,7 +2,19 @@
 
 Sensor data ingestion and analytics API with dbt transformations.
 
+> **Note:** This setup has been tested on macOS only. Windows users should use WSL2.
+
 ## Quick Start
+
+### First-Time Setup
+
+```bash
+./scripts/setup.sh
+```
+
+This checks prerequisites (Docker, Poetry, Python 3.11+), installs dependencies, and starts all services.
+
+### Manual Setup
 
 ```bash
 # 1. Start services
@@ -219,7 +231,7 @@ CI workflow runs tests/linting; CD (deployment) is not implemented.
 │   └── config/           # Centralized settings
 ├── terraform/            # IaC (GCP) - validated, not deployed
 ├── tests/unit/           # Unit tests
-├── scripts/              # Database init
+├── scripts/              # Setup and test scripts
 ├── .github/workflows/    # CI pipeline (tests, linting, pyright)
 └── docker-compose.yml    # Local environment
 ```
