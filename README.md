@@ -1,4 +1,4 @@
-# Sensor Data Data Engineering Assessment
+# Sensor Data Engineering Assessment
 
 Sensor data ingestion and analytics API with dbt transformations.
 
@@ -53,7 +53,7 @@ POST /data → Bronze (raw) → dbt → Silver (typed) → Gold (Power) → GET 
 ## Key Decisions
 
 ### Why Medallion Architecture?
-Raw data preserved for reprocessing and debugging. Each layer has single responsibility. Clear lineage from source to aggregation.
+Raw data preserved for reprocessing; each layer has single responsibility with clear lineage.
 
 ### Why dbt (not Spark)?
 Sufficient for current scale. SQL-based transformations are easier to maintain and review. Can convert to Spark SQL later if data volume demands.
@@ -68,13 +68,35 @@ Separates DAGs, operators, hooks, and config. New pipelines can reuse `DbtRunOpe
 Airflow is local-only; production uses Cloud Composer. Using official image + init-time package install is simpler than maintaining a custom Dockerfile.
 
 ### Why Terraform Not Deployed?
-Cloud Composer costs ~$300/month (not in GCP free tier). Terraform code is validated and ready to deploy when budget allows.
+Included to demonstrate IaC practices, not deployed. Cloud Composer costs ~$300/month. Code is validated and ready to deploy.
 
 ### Why Separate Database Connections (src/ vs airflow/)?
 Airflow runs in separate container with no access to `src/`. Health check is one-off (no pooling needed). Both read from same env vars — no duplication.
 
 ### Why Clean Schema Names (silver, gold)?
 Custom `generate_schema_name` macro overrides dbt default. Simpler for single-environment development. Can add environment prefixes (`dev_silver`, `prod_silver`) later.
+
+---
+
+## Type Safety
+
+| Pattern | Usage | Benefit |
+|---------|-------|---------|
+| `@dataclass(frozen=True)` | `ParsedReading` | Immutable, hashable, prevents accidental mutation |
+| `TypedDict` | `ReadingResponse`, `SuccessResponse` | Type-safe JSON responses with IDE autocompletion |
+| `Pydantic BaseSettings` | `Settings` | Validated config from env vars with defaults |
+| Return type unions | `SuccessResponse \| tuple[...]` | Explicit error handling paths |
+
+---
+
+## Connection Resilience
+
+| Feature | Implementation | Purpose |
+|---------|----------------|---------|
+| Connection pooling | `psycopg2.pool.ThreadedConnectionPool` (2-10 connections) | Reuse connections, handle concurrent requests |
+| Automatic retry | `tenacity` with exponential backoff (3 attempts, 1-10s) | Recover from transient database failures |
+| Query timing | `TimedCursor` wrapper logs execution duration | Performance monitoring and slow query detection |
+| Safe transactions | Context manager with auto commit/rollback | Prevent partial writes on errors |
 
 ---
 
@@ -123,13 +145,8 @@ cd terraform && terraform init -backend=false && terraform validate
 
 ## Additional Considerations
 
-### Testing Strategy
-- **Unit tests:** Parsing, validation, power calculation logic
-- **dbt tests:** Schema tests (not_null, unique, accepted_values), custom tests (dbt_utils)
-- **Integration:** Full pipeline tested via docker compose
-
 ### Performance Measurement
-Add response time logging middleware. For production: integrate with observability tools (Datadog, CloudWatch, Prometheus).
+Query timing implemented via `TimedCursor`. For production: add Datadog/Prometheus integration.
 
 ### POST-Heavy Optimization
 - Batch inserts (reduce round trips)
@@ -142,10 +159,9 @@ Add response time logging middleware. For production: integrate with observabili
 - Materialized views for common queries
 
 ### Scaling to Millions of Connections
-- Connection pooling (implemented via psycopg2)
 - Horizontal scaling (Cloud Run auto-scales)
 - Database: Cloud SQL with read replicas
-- Consider CDC + streaming (Kafka) for real-time ingestion
+- CDC + streaming (Kafka) for real-time ingestion
 
 ---
 
@@ -158,13 +174,15 @@ Add response time logging middleware. For production: integrate with observabili
 | API | Docker container | Cloud Run |
 | Orchestration | Docker Airflow | Cloud Composer |
 
-### Terraform Improvements
+### Terraform Improvements (Not Deployed)
+Terraform configs are validated but symbolic — no cloud resources provisioned.
 - Add Cloud SQL and Cloud Run modules when deploying
 - Enable GCS backend for remote state
 - Add IAM roles and service accounts
 - Environment-specific tfvars (dev, staging, prod)
 
-### CI/CD Enhancements
+### CI/CD Enhancements (Partially Implemented)
+CI workflow runs tests/linting; CD (deployment) is not implemented.
 - Add CD workflow for automated deployment
 - Docker image build and push to Container Registry
 - Terraform plan/apply in pipeline
@@ -192,14 +210,16 @@ Add response time logging middleware. For production: integrate with observabili
 │   ├── db/               # Connection pooling, repositories
 │   └── config/           # Pydantic settings
 ├── dbt/                  # Transformations
-│   └── models/           # staging (silver), marts (gold)
+│   ├── models/           # staging (silver), marts (gold)
+│   └── macros/           # Custom schema naming
 ├── airflow/              # Orchestration
 │   ├── dags/             # Pipeline definitions
 │   ├── operators/        # Reusable dbt operators
 │   ├── hooks/            # Database health checks
 │   └── config/           # Centralized settings
 ├── terraform/            # IaC (GCP) - validated, not deployed
-├── tests/                # Unit tests
+├── tests/unit/           # Unit tests
 ├── scripts/              # Database init
+├── .github/workflows/    # CI pipeline (tests, linting, pyright)
 └── docker-compose.yml    # Local environment
 ```

@@ -95,3 +95,5 @@ dbt/package-lock.yml
 *.tfstate.*
 .terraform.lock.hcl
 logs
+
+claude.md
