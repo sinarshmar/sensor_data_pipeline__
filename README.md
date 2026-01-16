@@ -51,7 +51,8 @@ curl "http://localhost:5001/data?from=2022-04-14&to=2022-04-15"
 ## Architecture
 
 ```
-POST /data → Bronze (raw) → Airflow → dbt → Silver (typed) → Gold (Power) → GET /data
+POST /data → Bronze (raw) → dbt → Silver (typed) → Gold (Power) → GET /data
+                           (orchestrated by Airflow, runs hourly)
 ```
 
 | Layer | Table | Purpose |
@@ -90,25 +91,12 @@ Custom `generate_schema_name` macro overrides dbt default. Simpler for single-en
 
 ---
 
-## Type Safety
-
-| Pattern | Usage | Benefit |
-|---------|-------|---------|
-| `@dataclass(frozen=True)` | `ParsedReading` | Immutable, hashable, prevents accidental mutation |
-| `TypedDict` | `ReadingResponse`, `SuccessResponse` | Type-safe JSON responses with IDE autocompletion |
-| `Pydantic BaseSettings` | `Settings` | Validated config from env vars with defaults |
-| Return type unions | `SuccessResponse \| tuple[...]` | Explicit error handling paths |
-
----
-
 ## Connection Resilience
 
-| Feature | Implementation | Purpose |
-|---------|----------------|---------|
-| Connection pooling | `psycopg2.pool.ThreadedConnectionPool` (2-10 connections) | Reuse connections, handle concurrent requests |
-| Automatic retry | `tenacity` with exponential backoff (3 attempts, 1-10s) | Recover from transient database failures |
-| Query timing | `TimedCursor` wrapper logs execution duration | Performance monitoring and slow query detection |
-| Safe transactions | Context manager with auto commit/rollback | Prevent partial writes on errors |
+- **Connection pooling**: `ThreadedConnectionPool` (2-10 connections)
+- **Retry logic**: `tenacity` with exponential backoff (3 attempts)
+- **Query timing**: `TimedCursor` logs execution duration
+- **Safe transactions**: Context manager with auto commit/rollback
 
 ---
 
@@ -126,54 +114,22 @@ Custom `generate_schema_name` macro overrides dbt default. Simpler for single-en
 
 ## Running Tests
 
-### Full Test Suite (Recommended)
-
 ```bash
-./scripts/test_all.sh
+./scripts/test_all.sh    # Full suite: containers, API, dbt, unit tests, linting, Terraform
 ```
 
-Runs everything: containers, API, dbt, database verification, unit tests, linting, Terraform.
+Individual: `poetry run pytest`, `poetry run pyright`, `poetry run ruff check .`
 
-### Individual Tests
-
-```bash
-# Unit tests
-poetry run pytest -v
-
-# Type checking (strict mode)
-poetry run pyright
-
-# Linting
-poetry run ruff check .
-
-# dbt data quality tests
-cd dbt && dbt test --profiles-dir .
-
-# Terraform validation
-cd terraform && terraform init -backend=false && terraform validate
-```
+dbt tests: `cd dbt && dbt test --profiles-dir .`
+Terraform: `cd terraform && terraform init -backend=false && terraform validate`
 
 ---
 
-## Additional Considerations
+## Scaling Considerations
 
-### Performance Measurement
-Query timing implemented via `TimedCursor`. For production: add Datadog/Prometheus integration.
-
-### POST-Heavy Optimization
-- Batch inserts (reduce round trips)
-- Async processing with queue
-- Write-optimized indexes
-
-### GET-Heavy Optimization
-- Read replicas
-- Caching layer (Redis)
-- Materialized views for common queries
-
-### Scaling to Millions of Connections
-- Horizontal scaling (Cloud Run auto-scales)
-- Database: Cloud SQL with read replicas
-- CDC + streaming (Kafka) for real-time ingestion
+- **POST-heavy**: Batch inserts, async queue, write-optimized indexes
+- **GET-heavy**: Read replicas, Redis caching, materialized views
+- **High scale**: Cloud Run auto-scaling, CDC + Kafka for real-time
 
 ---
 
