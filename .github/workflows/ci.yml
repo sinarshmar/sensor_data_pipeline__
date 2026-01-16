@@ -62,19 +62,13 @@ jobs:
         run: poetry run pytest -v
 
       # -----------------------------------------------------------------
-      # dbt Validation
+      # dbt Validation (parse only - no database required)
       # -----------------------------------------------------------------
       - name: Validate dbt models
         run: |
           cd dbt
           poetry run dbt deps --profiles-dir .
-          poetry run dbt compile --profiles-dir .
-        env:
-          POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: sensor_data
+          poetry run dbt parse --profiles-dir .
 
   # =====================================================================
   # Terraform Validation (separate job - no Python needed)
